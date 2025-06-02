@@ -135,6 +135,7 @@ extract_dksu_version_from_repo() {
 
     local version
     version=$(_extract_dksu_version_from_local_repo "KSU/$makefile_path_in_repo" "KSU/$src_dir_in_repo")
+    rm -rf $temp_repo_dir
     local exit_code=$?
 
     cd "$current_dir" || echo "Warning: Could not cd back to '$current_dir'. Current path: $(pwd)" >&2
