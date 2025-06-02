@@ -7,6 +7,6 @@ for kernel in *; do
        zip -r "$escaped_kernel.zip" $kernel/
        rm -rf $kernel/
        echo "Uploading $escaped_kernel.zip..."
-       gh release upload ${{ github.ref_name }} "$escaped_kernel.zip"
+       gh release upload "$1" "$escaped_kernel.zip"
     fi
 done
