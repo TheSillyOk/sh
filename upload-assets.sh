@@ -6,9 +6,9 @@ for kernel in ../downloaded-artifacts/*; do
     if [ -d "$kernel" ]; then
        escaped_kernel=$(printf '%q' "$kernel")
        echo "Zipping $escaped_kernel..."
-       zip -r "../downloaded-artifacts/$kernel.zip" "../downloaded-artifacts/$kernel/"
-       rm -rf "../downloaded-artifacts/$kernel/"
+       zip -r "$kernel.zip" "$kernel/"
+       rm -rf "$kernel/"
        echo "Uploading $escaped_kernel.zip..."
-       gh release upload "$1" "../downloaded-artifacts/$escaped_kernel.zip"
+       gh release upload "$1" "$escaped_kernel.zip"
     fi
 done
