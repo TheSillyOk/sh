@@ -9,7 +9,7 @@ for kernel in *; do
     if [ -d "$kernel" ]; then
        escaped_kernel=$(printf '%q' "$kernel")
        echo "Zipping $escaped_kernel..."
-       zip -r "$kernel.zip" "$kernel/"
+       zip -r "$kernel.zip" "$kernel/*"
        rm -rf "$kernel/"
        echo "Uploading $escaped_kernel.zip..."
        cd $repo_dir
