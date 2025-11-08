@@ -51,9 +51,9 @@ main() {
     test Makefile || echo "Error: failed to obtain kernel/Makefile."
     FINAL_VERSION=""
     FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU_GIT[^_]*_VERSION|rev-list)' "Makefile" || true)
-    rm Makefile
     # echo "1: $FORMULA_LINE"
-    if [ -n "$FORMULA_LINE" ]; then
+    if [[ "$FORMULA_LINE" == *"KSU"* ]]; then
+      # echo "1.1: inside if"
       MATH_EXPR=$(echo "$FORMULA_LINE" | sed 's/.*expr //;s/))//' | xargs)
       # echo "2: $FORMULA_LINE"
       if [ -n "$MATH_EXPR" ]; then
@@ -63,13 +63,15 @@ main() {
 	# echo "4: $FINAL_VERSION"
       fi
     fi
-
-    #if [ -z "$FINAL_VERSION" ]; then
-      #FINAL_VERSION=$(grep -E '^\$\(eval KSU_VERSION=[0-9]+\)' "Makefile" | head -n 1 | grep -oP '[0-9]+')
-      #if [ -z "$FINAL_VERSION" ]; then
-        #FINAL_VERSION=$(grep -E '^ccflags-y \+= -DKSU_VERSION=[0-9]+' "Makefile" | head -n 1 | grep -oP '[0-9]+')
-      #fi
-    #fi
+    if [[ -z "$FINAL_VERSION" ]]; then
+      FINAL_VERSION=$(grep -E '^\$\(eval KSU_VERSION=[0-9]+\)' "Makefile" | head -n 1 | grep -oP '[0-9]+' || true)
+      # echo "5: $FINAL_VERSION"
+      if [ -z "$FINAL_VERSION" ]; then
+        FINAL_VERSION=$(grep -E '^ccflags-y \+= -DKSU_VERSION=[0-9]+' "Makefile" | head -n 1 | grep -oP '[0-9]+' || true)
+	# echo "6: $FINAL_VERSION"
+      fi
+    fi
+    rm Makefile
 
     if [ -n "$FINAL_VERSION" ]; then
       echo "$FINAL_VERSION"
