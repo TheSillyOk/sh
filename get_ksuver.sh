@@ -8,7 +8,7 @@ for cmd in git curl jq sed grep bc; do
     fi
 done
 
-if [[ "$#" -lt 2 || "$#" -gt 3 ]]; then
+if [[ "$#" -lt 2 || "$#" -gt 4 ]]; then
     echo "Usage: $0 <owner> <repo> [branch]" >&2
     echo "Example: $0 tiann KernelSU main" >&2
     exit 1
@@ -19,6 +19,25 @@ REPO="$2"
 BRANCH="$3"
 API_URL="https://api.github.com"
 REPO_URL="https://github.com/$OWNER/$REPO.git"
+if [[ -n "$4" ]]; then
+  DEBUG=true
+elif [[ "$3" == "_debug" ]]; then
+  DEBUG=true
+  BRANCH="null"
+else
+  DEBUG=false
+fi
+
+dlog() {
+  if [[ $DEBUG == true ]]; then
+    echo "$1"
+  fi
+}
+dclear() {
+  if [[ $DEBUG == false ]]; then
+    rm "$1"
+  fi
+}
 
 main() {
 
@@ -29,7 +48,7 @@ main() {
         exit 1
     fi
 
-    if [ -z "$BRANCH" ]; then
+    if [[ -z "$BRANCH" || "$BRANCH" == "null" ]]; then
         DEFAULT_BRANCH=$(curl --silent -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO" | jq -r .default_branch)
 	if [[ "$DEFAULT_BRANCH" == "null" || -z "$DEFAULT_BRANCH" ]]; then
             echo "Error: Could not determine default branch." >&2
@@ -37,6 +56,7 @@ main() {
 	fi
         BRANCH="$DEFAULT_BRANCH"
     fi
+    dlog "BRANCH: $BRANCH"
 
     COMMIT_COUNT=$(curl --silent -I -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO/commits?sha=$BRANCH&per_page=1" | grep -i "^link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
     if [ -z "$COMMIT_COUNT" ]; then
@@ -46,38 +66,44 @@ main() {
     if ! [[ "$COMMIT_COUNT" =~ ^[0-9]+$ && "$COMMIT_COUNT" -gt 20 ]]; then
         echo "Error: commit count looks abnormal ($COMMIT_COUNT)."
     fi
+    dlog "COMMIT_COUNT: $COMMIT_COUNT"
 
+    FORMULA_FILE="Makefile"
     curl -LSs "https://github.com/$OWNER/$REPO/raw/refs/heads/$BRANCH/kernel/Makefile" > Makefile
-    test Makefile || echo "Error: failed to obtain kernel/Makefile."
+    if [[ -z $(grep "KSU_VERSION" Makefile) ]]; then
+      dlog "Info: Could not obtain needed text for formula. Fallback to Kbuild"
+      dclear Makefile
+      FORMULA_FILE="Kbuild"
+      curl -LSs "https://github.com/$OWNER/$REPO/raw/refs/heads/$BRANCH/kernel/Kbuild" > Kbuild
+    fi
     FINAL_VERSION=""
-    FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU_GIT[^_]*_VERSION|rev-list)' "Makefile" || true)
-    # echo "1: $FORMULA_LINE"
+    FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU_GIT[^_]*_VERSION|rev-list)' "$FORMULA_FILE" || true)
+    dlog "FORMULA_LINE: $FORMULA_LINE"
     if [[ "$FORMULA_LINE" == *"KSU"* ]]; then
-      # echo "1.1: inside if"
       MATH_EXPR=$(echo "$FORMULA_LINE" | sed 's/.*expr //;s/))//' | xargs)
-      # echo "2: $FORMULA_LINE"
+      dlog "MATH_EXPR: $MATH_EXPR"
       if [ -n "$MATH_EXPR" ]; then
         CALC_STRING=$(echo "$MATH_EXPR" | sed -E "s/\\$\((KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT)\)|\\$\(shell.*rev-list[^\)]*\)/$COMMIT_COUNT/;s/\)//;s/\(//")
-	# echo "3: $CALC_STRING"
+	dlog "CALC_STRING: $CALC_STRING"
         FINAL_VERSION=$(echo "$CALC_STRING" | bc)
-	# echo "4: $FINAL_VERSION"
+	dlog "FINAL_VERSION: $FINAL_VERSION"
       fi
     fi
     if [[ -z "$FINAL_VERSION" ]]; then
-      FINAL_VERSION=$(grep -E '^\$\(eval KSU_VERSION=[0-9]+\)' "Makefile" | head -n 1 | grep -oP '[0-9]+' || true)
-      # echo "5: $FINAL_VERSION"
+      FINAL_VERSION=$(grep -E '^\$\(eval KSU_VERSION=[0-9]+\)' "$FORMULA_FILE" | head -n 1 | grep -oP '[0-9]+' || true)
+      dlog "FINAL_VERSION (hardcoded 1): $FINAL_VERSION"
       if [ -z "$FINAL_VERSION" ]; then
-        FINAL_VERSION=$(grep -E '^ccflags-y \+= -DKSU_VERSION=[0-9]+' "Makefile" | head -n 1 | grep -oP '[0-9]+' || true)
-	# echo "6: $FINAL_VERSION"
+        FINAL_VERSION=$(grep -E '^ccflags-y \+= -DKSU_VERSION=[0-9]+' "$FORMULA_FILE" | head -n 1 | grep -oP '[0-9]+' || true)
+	dlog "FINAL_VERSION (hardcoded 2): $FINAL_VERSION"
       fi
     fi
-    rm Makefile
+    dclear "$FORMULA_FILE"
 
     if [ -n "$FINAL_VERSION" ]; then
       echo "$FINAL_VERSION"
       return
     else
-      echo "Error: Could not determine KSU version." >&2
+      echo "Error: Could not determine KSU version"
       exit 1
     fi
 }
