@@ -90,12 +90,8 @@ main() {
       fi
     fi
     if [[ -z "$FINAL_VERSION" ]]; then
-      FINAL_VERSION=$(grep -E '^\$\(eval KSU_VERSION=[0-9]+\)' "$FORMULA_FILE" | head -n 1 | grep -oP '[0-9]+' || true)
-      dlog "FINAL_VERSION (hardcoded 1): $FINAL_VERSION"
-      if [ -z "$FINAL_VERSION" ]; then
-        FINAL_VERSION=$(grep -E '^ccflags-y \+= -DKSU_VERSION=[0-9]+' "$FORMULA_FILE" | head -n 1 | grep -oP '[0-9]+' || true)
-	dlog "FINAL_VERSION (hardcoded 2): $FINAL_VERSION"
-      fi
+      FINAL_VERSION=$(grep -E '^ccflags-y \+= -DKSU_VERSION=[0-9]+' "$FORMULA_FILE" | head -n 1 | grep -oP '[0-9]+' || true)
+      dlog "FINAL_VERSION (hardcoded): $FINAL_VERSION"
     fi
     dclear "$FORMULA_FILE"
 
