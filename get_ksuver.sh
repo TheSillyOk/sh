@@ -27,6 +27,8 @@ elif [[ "$3" == "_debug" ]]; then
 else
   DEBUG=false
 fi
+FORMULA_FILES="Kbuild Makefile"
+types="heads tags"
 
 dlog() {
   if [[ $DEBUG == true ]]; then
@@ -55,6 +57,7 @@ main() {
             exit 1
 	fi
         BRANCH="$DEFAULT_BRANCH"
+        types="heads"
     fi
     dlog "BRANCH: $BRANCH"
 
@@ -68,14 +71,24 @@ main() {
     fi
     dlog "COMMIT_COUNT: $COMMIT_COUNT"
 
-    FORMULA_FILE="Makefile"
-    curl -LSs "https://github.com/$OWNER/$REPO/raw/refs/heads/$BRANCH/kernel/Makefile" > Makefile
-    if [[ -z $(grep "KSU_VERSION" Makefile) ]]; then
-      dlog "Info: Could not obtain needed text for formula. Fallback to Kbuild"
-      dclear Makefile
-      FORMULA_FILE="Kbuild"
-      curl -LSs "https://github.com/$OWNER/$REPO/raw/refs/heads/$BRANCH/kernel/Kbuild" > Kbuild
-    fi
+    status=0
+    for file in $FORMULA_FILES; do
+      if [[ "$status" != 0 ]]; then
+        break
+      fi
+
+      for type in $types; do
+        curl -LSs "https://github.com/$OWNER/$REPO/raw/refs/${type}/$BRANCH/kernel/$file" > $file
+        if [[ -z $(grep "KSU_VERSION" ${file}) ]]; then
+          dclear "$file"
+        else
+          status=1
+          FORMULA_FILE="$file"
+          dlog "FORMULA_FILE: $FORMULA_FILE"
+          break
+        fi
+      done
+    done
     FINAL_VERSION=""
     FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU_GIT[^_]*_VERSION|rev-list)' "$FORMULA_FILE" || true)
     dlog "FORMULA_LINE: $FORMULA_LINE"
