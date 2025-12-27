@@ -9,26 +9,26 @@ for cmd in git curl jq sed grep bc; do
 done
 
 if [[ "$#" -lt 2 || "$#" -gt 4 ]]; then
-    echo "Usage: $0 <owner> <repo> [branch]" >&2
+    echo "Usage: $0 <owner> <repo> [branch/commit/tag]" >&2
     echo "Example: $0 tiann KernelSU main" >&2
     exit 1
 fi
 
 OWNER="$1"
 REPO="$2"
-BRANCH="$3"
+REF="$3"
 API_URL="https://api.github.com"
 REPO_URL="https://github.com/$OWNER/$REPO.git"
 if [[ -n "$4" ]]; then
   DEBUG=true
 elif [[ "$3" == "_debug" ]]; then
   DEBUG=true
-  BRANCH="null"
+  REF="null"
 else
   DEBUG=false
 fi
 FORMULA_FILES="Kbuild Makefile"
-types="heads tags"
+types="refs/heads/ refs/tags/ /"
 
 dlog() {
   if [[ $DEBUG == true ]]; then
@@ -50,20 +50,20 @@ main() {
         exit 1
     fi
 
-    if [[ -z "$BRANCH" || "$BRANCH" == "null" ]]; then
+    if [[ -z "$REF" || "$REF" == "null" ]]; then
         DEFAULT_BRANCH=$(curl --silent -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO" | jq -r .default_branch)
 	if [[ "$DEFAULT_BRANCH" == "null" || -z "$DEFAULT_BRANCH" ]]; then
             echo "Error: Could not determine default branch." >&2
             exit 1
 	fi
-        BRANCH="$DEFAULT_BRANCH"
-        types="heads"
+        REF="$DEFAULT_BRANCH"
+        types="refs/heads"
     fi
-    dlog "BRANCH: $BRANCH"
+    dlog "REF: $REF"
 
-    COMMIT_COUNT=$(curl --silent -I -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO/commits?sha=$BRANCH&per_page=1" | grep -i "^link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
+    COMMIT_COUNT=$(curl --silent -I -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO/commits?sha=$REF&per_page=1" | grep -i "^link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
     if [ -z "$COMMIT_COUNT" ]; then
-        COMMIT_COUNT=$(curl --silent -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO/commits?sha=$BRANCH&per_page=100" | jq '. | length')
+        COMMIT_COUNT=$(curl --silent -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO/commits?sha=$REF&per_page=100" | jq '. | length')
     fi
 
     if ! [[ "$COMMIT_COUNT" =~ ^[0-9]+$ && "$COMMIT_COUNT" -gt 20 ]]; then
@@ -78,7 +78,7 @@ main() {
       fi
 
       for type in $types; do
-        curl -LSs "https://github.com/$OWNER/$REPO/raw/refs/${type}/$BRANCH/kernel/$file" > $file
+        curl -LSs "https://github.com/$OWNER/$REPO/raw/${type}${REF}/kernel/$file" > $file
         if [[ -z $(grep "KSU_VERSION" ${file}) ]]; then
           dclear "$file"
         else
