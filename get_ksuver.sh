@@ -57,7 +57,7 @@ main() {
             exit 1
 	fi
         REF="$DEFAULT_BRANCH"
-        types="refs/heads"
+        types="refs/heads/"
     fi
     dlog "REF: $REF"
 
@@ -79,8 +79,15 @@ main() {
 
       for type in $types; do
         curl -LSs "https://github.com/$OWNER/$REPO/raw/${type}${REF}/kernel/$file" > $file
-        if [[ -z $(grep "KSU_VERSION" ${file}) ]]; then
+        if [[ -n $(grep "DOCTYPE html" "${file}") ]]; then
+          dlog "html returned, skipping ${file}"
           dclear "$file"
+          continue
+        fi
+
+        if [[ -z $(grep "KSU_VERSION" "${file}") ]]; then
+          dclear "$file"
+          dlog "Formula not in ${file}"
         else
           status=1
           FORMULA_FILE="$file"
@@ -89,6 +96,10 @@ main() {
         fi
       done
     done
+    if [[ -z "$FORMULA_FILE" ]]; then
+      dlog "Failed to obtain file"
+      exit 1
+    fi
     FINAL_VERSION=""
     FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU_GIT[^_]*_VERSION|rev-list)' "$FORMULA_FILE" || true)
     dlog "FORMULA_LINE: $FORMULA_LINE"
