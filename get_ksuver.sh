@@ -114,7 +114,7 @@ main() {
       fi
     fi
     if [[ -z "$FINAL_VERSION" ]]; then
-      FINAL_VERSION=$(grep -E '^ccflags-y \+= -DKSU_VERSION=[0-9]+' "$FORMULA_FILE" | head -n 1 | grep -oP '[0-9]+' || true)
+      FINAL_VERSION=$(grep -E '^(ccflags-y|CFLAGS[^ ]+) \+= -DKSU_VERSION=[0-9]+' "$FORMULA_FILE" | head -n 1 | grep -oP '[0-9]+' || true)
       dlog "FINAL_VERSION (hardcoded): $FINAL_VERSION"
     fi
     dclear "$FORMULA_FILE"
