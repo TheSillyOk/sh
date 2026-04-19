@@ -101,13 +101,13 @@ main() {
       exit 1
     fi
     FINAL_VERSION=""
-    FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU_GIT[^_]*_VERSION|rev-list)' "$FORMULA_FILE" || true)
+    FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU.+_VERSION|rev-list)' "$FORMULA_FILE" || true)
     dlog "FORMULA_LINE: $FORMULA_LINE"
     if [[ "$FORMULA_LINE" == *"KSU"* ]]; then
       MATH_EXPR=$(echo "$FORMULA_LINE" | sed 's/.*expr //;s/))//' | xargs)
       dlog "MATH_EXPR: $MATH_EXPR"
       if [ -n "$MATH_EXPR" ]; then
-        CALC_STRING=$(echo "$MATH_EXPR" | sed -E "s/\\$\((KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT)\)|\\$\(shell.*rev-list[^\)]*\)/$COMMIT_COUNT/;s/\)//;s/\(//")
+        CALC_STRING=$(echo "$MATH_EXPR" | sed -E "s/\\$\((KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT|KSU_LOCAL_VERSION|KSU.*VERSION)\)|\\$\(shell.*rev-list[^\)]*\)/$COMMIT_COUNT/;s/\)//;s/\(//")
 	dlog "CALC_STRING: $CALC_STRING"
         FINAL_VERSION=$(echo "$CALC_STRING" | bc)
 	dlog "FINAL_VERSION: $FINAL_VERSION"
