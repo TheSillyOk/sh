@@ -23,12 +23,11 @@ if [[ -n "$4" ]]; then
   DEBUG=true
 elif [[ "$3" == "_debug" ]]; then
   DEBUG=true
-  REF="null"
+  REF=""
 else
   DEBUG=false
 fi
 FORMULA_FILES="Kbuild Makefile"
-types="refs/heads/ refs/tags/ /"
 
 dlog() {
   if [[ $DEBUG == true ]]; then
@@ -42,24 +41,29 @@ dclear() {
 }
 
 main() {
-
     HTTP_CODE=$(curl --silent --output /dev/null --write-out "%{http_code}" "$API_URL/repos/$OWNER/$REPO")
-    if [[ "$HTTP_CODE" -ne 200 ]]; then
-        echo "Error: Repository not found or is private (HTTP Status: $HTTP_CODE)." >&2
-        echo "Please check for typos in the owner ('$OWNER') and repo ('$REPO') names." >&2
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "Error: Repository not found or is private (HTTP Status: $HTTP_CODE)."
+        echo "Please check for typos in the owner ('$OWNER') and repo ('$REPO') names."
+	echo "This could also mean you are being rate limited by GitHub."
         exit 1
     fi
 
-    if [[ -z "$REF" || "$REF" == "null" ]]; then
+    if [ -z "$REF" ]; then
         DEFAULT_BRANCH=$(curl --silent -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO" | jq -r .default_branch)
 	if [[ "$DEFAULT_BRANCH" == "null" || -z "$DEFAULT_BRANCH" ]]; then
             echo "Error: Could not determine default branch." >&2
             exit 1
 	fi
         REF="$DEFAULT_BRANCH"
-        types="refs/heads/"
     fi
     dlog "REF: $REF"
+
+    if ! curl -s -f -H "Accept: application/vnd.github.v3+json" \
+    "${API_URL}/repos/${OWNER}/${REPO}/commits/${REF}" > /dev/null 2>&1; then
+      echo "Error: could not find ref"
+      exit 1
+    fi
 
     COMMIT_COUNT=$(curl --silent -I -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO/commits?sha=$REF&per_page=1" | grep -i "^link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
     if [ -z "$COMMIT_COUNT" ]; then
@@ -67,52 +71,50 @@ main() {
     fi
 
     if ! [[ "$COMMIT_COUNT" =~ ^[0-9]+$ && "$COMMIT_COUNT" -gt 20 ]]; then
-        echo "Error: commit count looks abnormal ($COMMIT_COUNT)."
+      echo "Error: commit count looks abnormal ($COMMIT_COUNT)."
+      exit 1
     fi
     dlog "COMMIT_COUNT: $COMMIT_COUNT"
 
-    status=0
     for file in $FORMULA_FILES; do
-      if [[ "$status" != 0 ]]; then
-        break
+      curl -LSs "https://github.com/$OWNER/$REPO/raw/${REF}/kernel/$file" > $file
+      if [[ -n $(grep "DOCTYPE html" "${file}") ]]; then
+        dlog "html returned, skipping ${file}"
+        dclear "$file"
+        continue
       fi
 
-      for type in $types; do
-        curl -LSs "https://github.com/$OWNER/$REPO/raw/${type}${REF}/kernel/$file" > $file
-        if [[ -n $(grep "DOCTYPE html" "${file}") ]]; then
-          dlog "html returned, skipping ${file}"
-          dclear "$file"
-          continue
-        fi
-
-        if [[ -z $(grep "KSU_VERSION" "${file}") ]]; then
-          dclear "$file"
-          dlog "Formula not in ${file}"
-        else
-          status=1
-          FORMULA_FILE="$file"
-          dlog "FORMULA_FILE: $FORMULA_FILE"
-          break
-        fi
-      done
+      if [[ -z $(grep "KSU_VERSION" "${file}") ]]; then
+        dclear "$file"
+        dlog "Formula not in ${file}"
+      else
+        FORMULA_FILE="$file"
+        dlog "FORMULA_FILE: $FORMULA_FILE"
+        break
+      fi
     done
+
     if [[ -z "$FORMULA_FILE" ]]; then
       dlog "Failed to obtain file"
       exit 1
     fi
-    FINAL_VERSION=""
+
     FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU.+_VERSION|rev-list)' "$FORMULA_FILE" || true)
     dlog "FORMULA_LINE: $FORMULA_LINE"
+
     if [[ "$FORMULA_LINE" == *"KSU"* ]]; then
       MATH_EXPR=$(echo "$FORMULA_LINE" | sed 's/.*expr //;s/))//' | xargs)
       dlog "MATH_EXPR: $MATH_EXPR"
+
       if [ -n "$MATH_EXPR" ]; then
         CALC_STRING=$(echo "$MATH_EXPR" | sed -E "s/\\$\((KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT|KSU_LOCAL_VERSION|KSU.*VERSION)\)|\\$\(shell.*rev-list[^\)]*\)/$COMMIT_COUNT/;s/\)//;s/\(//")
 	dlog "CALC_STRING: $CALC_STRING"
         FINAL_VERSION=$(echo "$CALC_STRING" | bc)
 	dlog "FINAL_VERSION: $FINAL_VERSION"
       fi
+
     fi
+
     if [[ -z "$FINAL_VERSION" ]]; then
       FINAL_VERSION=$(grep -E '^(ccflags-y|CFLAGS[^ ]+) \+= -DKSU_VERSION=[0-9]+' "$FORMULA_FILE" | head -n 1 | grep -oP '[0-9]+' || true)
       dlog "FINAL_VERSION (hardcoded): $FINAL_VERSION"
