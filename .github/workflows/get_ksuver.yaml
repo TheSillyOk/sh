@@ -1,0 +1,48 @@
+name: Test get_ksuver.sh
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: "recursive"
+          fetch-depth: 0
+
+      - name: Test get_ksuver.sh
+        run: |
+          set -e
+
+          echo "---> Official KSU tests"
+
+          echo "-> default branch"
+          ./get_ksuver.sh "tiann" "KernelSU" "_debug"
+
+          echo "-> tag v0.9.5"
+          ./get_ksuver.sh "tiann" "KernelSU" "v0.9.5" "_debug"
+
+          echo "-> commit 32a1078"
+          ./get_ksuver.sh "tiann" "KernelSU" "32a1078" "_debug"
+
+          echo "---> KSU fork tests"
+
+          echo "-> backslashxx/KernelSU"
+          ./get_ksuver.sh "backslashxx" "KernelSU" "_debug"
+
+          echo "-> rsuntk/KernelSU"
+          ./get_ksuver.sh "rsuntk" "KernelSU" "_debug"
+
+          echo "-> ReSukiSU/ReSukiSU"
+          ./get_ksuver.sh "ReSukiSU" "ReSukiSU" "_debug"
+
+          echo "-> KernelSU-Next/KernelSU-Next"
+          ./get_ksuver.sh "KernelSU-Next" "KernelSU-Next" "_debug"
+
+          echo "-> KernelSU-Next legacy"
+          ./get_ksuver.sh "KernelSU-Next" "KernelSU-Next" "legacy" "_debug"
