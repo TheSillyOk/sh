@@ -46,3 +46,6 @@ jobs:
 
           echo "-> KernelSU-Next legacy"
           ./get_ksuver.sh "KernelSU-Next" "KernelSU-Next" "legacy" "_debug"
+
+          echo "-> Anatdx/YukiSU"
+          ./get_ksuver.sh "Anatdx" "YukiSU" "_debug"

@@ -99,7 +99,7 @@ main() {
     exit 1
   fi
 
-  FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU.+_VERSION|rev-list)' "$FORMULA_FILE" || true)
+  FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU.+_VERSION|rev-list)' "$FORMULA_FILE" | head -n 1 || true)
   dlog "FORMULA_LINE: $FORMULA_LINE"
 
   if [[ "$FORMULA_LINE" == *"KSU"* ]]; then
@@ -107,7 +107,7 @@ main() {
     dlog "MATH_EXPR: $MATH_EXPR"
 
     if [ -n "$MATH_EXPR" ]; then
-      CALC_STRING=$(echo "$MATH_EXPR" | sed -E "s/\\$\((KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT|KSU_LOCAL_VERSION|KSU.*VERSION)\)|\\$\(shell.*rev-list[^\)]*\)/$COMMIT_COUNT/;s/\)//;s/\(//")
+      CALC_STRING=$(echo "$MATH_EXPR" | sed -E "s/\\$\((KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT|KSU_LOCAL_VERSION|KSU.*VERSION)\)|\\$\(shell.*rev-list[^\)]*\)/$COMMIT_COUNT/;s/\)//;s/\(//" | sed 's/[^ ]*[^0-9\+-\* ][^ ]*//g')
       dlog "CALC_STRING: $CALC_STRING"
 
       FINAL_VERSION=$(echo "$CALC_STRING" | bc)
