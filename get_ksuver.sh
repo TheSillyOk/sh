@@ -99,21 +99,32 @@ main() {
     exit 1
   fi
 
-  FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU.+_VERSION|rev-list)' "$FORMULA_FILE" | head -n 1 || true)
+  FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU.+_VERSION|rev-list|expr)' "$FORMULA_FILE" || true)
   dlog "FORMULA_LINE: $FORMULA_LINE"
 
   if [[ "$FORMULA_LINE" == *"KSU"* ]]; then
-    MATH_EXPR=$(echo "$FORMULA_LINE" | sed 's/.*expr //;s/))//' | xargs)
-    dlog "MATH_EXPR: $MATH_EXPR"
+    IFS=$'\n'
+    for formula in $FORMULA_LINE; do
+      MATH_EXPR=$(echo "${formula}" | sed 's/.*expr //;s/))//' | xargs || continue)
+      dlog "MATH_EXPR: $MATH_EXPR"
 
-    if [ -n "$MATH_EXPR" ]; then
-      CALC_STRING=$(echo "$MATH_EXPR" | sed -E "s/\\$\((KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT|KSU_LOCAL_VERSION|KSU.*VERSION)\)|\\$\(shell.*rev-list[^\)]*\)/$COMMIT_COUNT/;s/\)//;s/\(//" | sed 's/[^ ]*[^0-9\+-\* ][^ ]*//g')
-      dlog "CALC_STRING: $CALC_STRING"
+      if [ -n "$MATH_EXPR" ]; then
+          CALC_STRING=$(echo "$MATH_EXPR" | sed -E "s/\\$\((KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT|KSU_LOCAL_VERSION|KSU.*VERSION|LOCAL_COUNT)\)|\\$\(shell.*rev-list[^\)]*\)/$COMMIT_COUNT/g;s/\)//;s/\(//" || continue)
 
-      FINAL_VERSION=$(echo "$CALC_STRING" | bc)
-      dlog "FINAL_VERSION: $FINAL_VERSION"
-    fi
+          for line in $(grep -E "[^+]*?=[0-9 ]+$" "$FORMULA_FILE" | grep -v -E "ccflags|obj"); do
+            VAR_NAME=$(echo "${line}" | sed -E 's/([aA-zZ]+).*?=[^0-9]*([0-9]+)/\1/g')
+            VAR_VALUE=$(echo "${line}" | sed -E 's/([aA-zZ]+).*?=[^0-9]*([0-9]+)/\2/g')
 
+            CALC_STRING=$(echo "$CALC_STRING" | sed -E "s/[^ ]*${VAR_NAME}(,[^\)]+\))?/${VAR_VALUE}/g")
+          done
+
+          dlog "CALC_STRING: $CALC_STRING"
+
+          FINAL_VERSION=$(echo "$CALC_STRING" | sed 's/[^ ]*[^0-9\+-\* ][^ ]*//g' | bc || continue)
+          dlog "FINAL_VERSION: $FINAL_VERSION"
+          break
+      fi
+    done
   fi
 
   if [[ -z "$FINAL_VERSION" ]]; then
