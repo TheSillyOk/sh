@@ -17,7 +17,7 @@ fi
 OWNER="$1"
 REPO="$2"
 REF="$3"
-API_URL="https://api.github.com"
+API_URL="https://api.github.com/repos/$OWNER/$REPO"
 REPO_URL="https://github.com/$OWNER/$REPO.git"
 if [[ -n "$4" ]]; then
   DEBUG=true
@@ -41,7 +41,7 @@ dclear() {
 }
 
 main() {
-  HTTP_CODE=$(curl --silent --output /dev/null --write-out "%{http_code}" "$API_URL/repos/$OWNER/$REPO")
+  HTTP_CODE=$(curl --silent --output /dev/null --write-out "%{http_code}" "$API_URL")
   if [ "$HTTP_CODE" -ne 200 ]; then
     echo "Error: Repository not found or is private (HTTP Status: $HTTP_CODE)."
     echo "Please check for typos in the owner ('$OWNER') and repo ('$REPO') names."
@@ -50,7 +50,7 @@ main() {
   fi
 
   if [ -z "$REF" ]; then
-    DEFAULT_BRANCH=$(curl --silent -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO" | jq -r .default_branch)
+    DEFAULT_BRANCH=$(curl --silent -H "Accept: application/vnd.github.v3+json" "$API_URL" | jq -r .default_branch)
     if [[ "$DEFAULT_BRANCH" == "null" || -z "$DEFAULT_BRANCH" ]]; then
       echo "Error: Could not determine default branch." >&2
       exit 1
@@ -60,14 +60,14 @@ main() {
   dlog "REF: $REF"
 
   if ! curl -s -f -H "Accept: application/vnd.github.v3+json" \
-  "${API_URL}/repos/${OWNER}/${REPO}/commits/${REF}" > /dev/null 2>&1; then
+  "${API_URL}/commits/${REF}" > /dev/null 2>&1; then
     echo "Error: could not find ref"
     exit 1
   fi
 
-  COMMIT_COUNT=$(curl --silent -I -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO/commits?sha=$REF&per_page=1" | grep -i "^link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
+  COMMIT_COUNT=$(curl --silent -I -H "Accept: application/vnd.github.v3+json" "$API_URL/commits?sha=$REF&per_page=1" | grep -i "^link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
   if [ -z "$COMMIT_COUNT" ]; then
-    COMMIT_COUNT=$(curl --silent -H "Accept: application/vnd.github.v3+json" "$API_URL/repos/$OWNER/$REPO/commits?sha=$REF&per_page=100" | jq '. | length')
+    COMMIT_COUNT=$(curl --silent -H "Accept: application/vnd.github.v3+json" "$API_URL/commits?sha=$REF&per_page=100" | jq '. | length')
   fi
 
   if ! [[ "$COMMIT_COUNT" =~ ^[0-9]+$ && "$COMMIT_COUNT" -gt 20 ]]; then
@@ -99,36 +99,35 @@ main() {
     exit 1
   fi
 
+  IFS=$'\n'
+  for line in $(grep -E '.*=[0-9 ]+$' "$FORMULA_FILE" | grep -v -E "cflags|obj"); do
+    VAR_NAME=$(echo "${line}" | sed -E 's/([aA-zZ_]+)[^aA-zZ_=]*?=.*/\1/')
+    VAR_VALUE=$(echo "${line}" | sed -E 's/[^=]+= *([0-9]+)$/\1/')
+
+    dlog "${VAR_NAME} -> ${VAR_VALUE}"
+
+    sed -i -E "s/[\$\(]{2}${VAR_NAME}(\){1,2},[^\)]*)?\)/${VAR_VALUE}/g" "$FORMULA_FILE"
+  done
+
   FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU.+_VERSION|rev-list|expr)' "$FORMULA_FILE" || true)
   dlog "FORMULA_LINE: $FORMULA_LINE"
 
-  if [[ "$FORMULA_LINE" == *"KSU"* ]]; then
-    IFS=$'\n'
-    for formula in $FORMULA_LINE; do
-      MATH_EXPR=$(echo "${formula}" | sed 's/.*expr //;s/))//' | xargs || continue)
-      dlog "MATH_EXPR: $MATH_EXPR"
+  for formula in $FORMULA_LINE; do
+    MATH_EXPR=$(echo "${formula}" | sed 's/.*expr //;s/))//' | xargs || continue)
+    dlog "MATH_EXPR: $MATH_EXPR"
 
-      if [ -n "$MATH_EXPR" ]; then
-          CALC_STRING=$(echo "$MATH_EXPR" | sed -E "s/\\$\((KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT|KSU_LOCAL_VERSION|KSU.*VERSION|LOCAL_COUNT)\)|\\$\(shell.*rev-list[^\)]*\)/$COMMIT_COUNT/g;s/\)//;s/\(//" || continue)
+    if [ -n "$MATH_EXPR" ]; then
+      CALC_STRING=$(echo "$MATH_EXPR" | sed -E "s/\\$\((KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT|KSU_LOCAL_VERSION|KSU.*VERSION|LOCAL_COUNT)\)|\\$\(shell.*rev-list[^\)]*\)/$COMMIT_COUNT/g;s/\)//;s/\(//" || continue)
+      dlog "CALC_STRING: $CALC_STRING"
 
-          for line in $(grep -E "[^+]*?=[0-9 ]+$" "$FORMULA_FILE" | grep -v -E "ccflags|obj"); do
-            VAR_NAME=$(echo "${line}" | sed -E 's/([aA-zZ]+).*?=[^0-9]*([0-9]+)/\1/g')
-            VAR_VALUE=$(echo "${line}" | sed -E 's/([aA-zZ]+).*?=[^0-9]*([0-9]+)/\2/g')
-
-            CALC_STRING=$(echo "$CALC_STRING" | sed -E "s/[^ ]*${VAR_NAME}(,[^\)]+\))?/${VAR_VALUE}/g")
-          done
-
-          dlog "CALC_STRING: $CALC_STRING"
-
-          FINAL_VERSION=$(echo "$CALC_STRING" | sed 's/[^ ]*[^0-9\+-\* ][^ ]*//g' | bc || continue)
-          dlog "FINAL_VERSION: $FINAL_VERSION"
-          break
-      fi
-    done
-  fi
+      FINAL_VERSION=$(echo "$CALC_STRING" | sed 's/[^ ]*[^0-9\+-\* ][^ ]*//g' | bc || continue)
+      dlog "FINAL_VERSION: $FINAL_VERSION"
+      break
+    fi
+  done
 
   if [[ -z "$FINAL_VERSION" ]]; then
-    FINAL_VERSION=$(grep -E '^(ccflags-y|CFLAGS[^ ]+) \+= -DKSU_VERSION=[0-9]+' "$FORMULA_FILE" | head -n 1 | grep -oP '[0-9]+' || true)
+    FINAL_VERSION=$(grep -E 'KSU_VERSION=[0-9]+' "$FORMULA_FILE" | head -n 1 | grep -oP '[0-9]+' || true)
     dlog "FINAL_VERSION (hardcoded): $FINAL_VERSION"
   fi
   dclear "$FORMULA_FILE"
