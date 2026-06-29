@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-for cmd in git curl jq sed grep bc; do
+for cmd in git curl jq sed grep make; do
   if ! command -v "$cmd" &> /dev/null; then
       echo "Error: Required command '$cmd' is not installed. Please install it to continue." >&2
       exit 1
@@ -67,6 +67,7 @@ main() {
 
   COMMIT_COUNT=$(curl --silent -I -H "Accept: application/vnd.github.v3+json" "$API_URL/commits?sha=$REF&per_page=1" | grep -i "^link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
   if [ -z "$COMMIT_COUNT" ]; then
+    dlog "COMMIT_COUNT FALLBACK"
     COMMIT_COUNT=$(curl --silent -H "Accept: application/vnd.github.v3+json" "$API_URL/commits?sha=$REF&per_page=100" | jq '. | length')
   fi
 
@@ -99,37 +100,14 @@ main() {
     exit 1
   fi
 
-  IFS=$'\n'
-  for line in $(grep -E '.*=[0-9 ]+$' "$FORMULA_FILE" | grep -v -E "cflags|obj"); do
-    VAR_NAME=$(echo "${line}" | sed -E 's/([aA-zZ_]+)[^aA-zZ_=]*?=.*/\1/')
-    VAR_VALUE=$(echo "${line}" | sed -E 's/[^=]+= *([0-9]+)$/\1/')
+  VARIABLE=$(grep -E "(KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT|KSU_LOCAL_VERSION|KSU.*VERSION|LOCAL_COUNT)" "$FORMULA_FILE" | head -n 1 | sed -E 's/([aA-zZ]+).*=.*/\1/g')
+  dlog "VARIABLE: $VARIABLE"
 
-    dlog "${VAR_NAME} -> ${VAR_VALUE}"
+  VERSION_LINE=$(make -f "$FORMULA_FILE" "$VARIABLE=$COMMIT_COUNT" 2>/dev/null | grep -i "version" | head -n 1 || true)
+  dlog "VERSION_LINE: $VERSION_LINE"
 
-    sed -i -E "s/[\$\(]{2}${VAR_NAME}(\){1,2},[^\)]*)?\)/${VAR_VALUE}/g" "$FORMULA_FILE"
-  done
+  FINAL_VERSION=$(echo "$VERSION_LINE" | grep -oE '[0-9]{5,}' | head -n 1)
 
-  FORMULA_LINE=$(grep -E 'KSU_VERSION *:?=.*?(KSU.+_VERSION|rev-list|expr)' "$FORMULA_FILE" || true)
-  dlog "FORMULA_LINE: $FORMULA_LINE"
-
-  for formula in $FORMULA_LINE; do
-    MATH_EXPR=$(echo "${formula}" | sed 's/.*expr //;s/))//' | xargs || continue)
-    dlog "MATH_EXPR: $MATH_EXPR"
-
-    if [ -n "$MATH_EXPR" ]; then
-      CALC_STRING=$(echo "$MATH_EXPR" | sed -E "s/\\$\((KSU_GIT_VERSION|KSU_GITHUB_VERSION_COMMIT|KSU_LOCAL_VERSION|KSU.*VERSION|LOCAL_COUNT)\)|\\$\(shell.*rev-list[^\)]*\)/$COMMIT_COUNT/g;s/\)//;s/\(//" || continue)
-      dlog "CALC_STRING: $CALC_STRING"
-
-      FINAL_VERSION=$(echo "$CALC_STRING" | sed 's/[^ ]*[^0-9\+-\* ][^ ]*//g' | bc || continue)
-      dlog "FINAL_VERSION: $FINAL_VERSION"
-      break
-    fi
-  done
-
-  if [[ -z "$FINAL_VERSION" ]]; then
-    FINAL_VERSION=$(grep -E 'KSU_VERSION=[0-9]+' "$FORMULA_FILE" | head -n 1 | grep -oP '[0-9]+' || true)
-    dlog "FINAL_VERSION (hardcoded): $FINAL_VERSION"
-  fi
   dclear "$FORMULA_FILE"
 
   if [ -n "$FINAL_VERSION" ]; then
