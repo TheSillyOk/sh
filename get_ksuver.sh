@@ -4,9 +4,13 @@ set -e
 for cmd in curl jq sed grep bc; do
   if ! command -v "$cmd" &> /dev/null; then
       echo "Error: Required command '$cmd' is not installed. Please install it to continue." >&2
-      exit 1
+      exit=1
   fi
 done
+
+if [[ "$exit" == 1 ]]; then
+  exit 1
+fi
 
 if [[ "$#" -lt 2 || "$#" -gt 4 ]]; then
   echo "Usage: $0 <owner> <repo> [branch/commit/tag]" >&2
