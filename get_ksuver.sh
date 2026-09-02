@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-for cmd in git curl jq sed grep bc; do
+for cmd in curl jq sed grep bc; do
   if ! command -v "$cmd" &> /dev/null; then
       echo "Error: Required command '$cmd' is not installed. Please install it to continue." >&2
       exit 1
